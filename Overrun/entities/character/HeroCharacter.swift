@@ -10,8 +10,7 @@ import SpriteKit
 
 class HeroCharacter : CharacterBase{
     
-    var dragStartPosition: CGPoint? = nil
-    var isDragging: Bool = false
+    
     
     init(spriteName: String, objectSize: CGFloat, worldCoord : CGPoint,
         contactBitMask : UInt32, collisionBitMask : UInt32)
@@ -22,5 +21,18 @@ class HeroCharacter : CharacterBase{
         // Remind that all the spriteNode default anchor point is (0.5, 0.5) -> the center of the sprite
         // default not apply the position
         spriteNode.position = .zero
+        
+        setupAttackSpriteNode(attackSpritePredix : spriteName)
+    }
+    
+    func updatePos(_ currentView : GameScreenViewPort)
+    {
+        let centerOfScreen = currentView.getCenterOfTheScreen()
+        
+        //spriteNode.position.x = centerOfScreen.x - currentView.screenWorldPoint.x
+        //spriteNode.position.y = centerOfScreen.y - currentView.screenWorldPoint.y
+        
+        updateSpritePosition(CGPoint(x: centerOfScreen.x - currentView.screenWorldPoint.x,
+                                     y: centerOfScreen.y - currentView.screenWorldPoint.y))
     }
 }
