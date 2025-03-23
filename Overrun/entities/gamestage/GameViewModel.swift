@@ -12,6 +12,9 @@ class GameViewModel {
     // singleton object
     static let obj = GameViewModel()
     
+    // Hero Sprite Node
+    var hero : HeroCharacter? = nil
+    
     // Controller
     var controller = DragController()
     

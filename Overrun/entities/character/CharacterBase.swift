@@ -12,10 +12,21 @@ class CharacterBase : GameObjectBase {
     
     // the spriteNode already had the .position keep updating the current position
 
+    var dragStartPosition: CGPoint? = nil
+    var isDragging: Bool = false
+    
     var moveTexture : [[SKTexture]] = [[]]
+    var attackTexture : [SKTexture] = []
+    
+    // init as nil, can have or not
+    var attackSpriteNode : [SKSpriteNode?] = [SKSpriteNode?](repeating: nil, count: 4)
+    var beforeAttackPos : CGPoint = CGPoint(x: 0, y: 0)
+    var beforeAttackSize : CGSize = CGSize(width: 0, height: 0)
+    var isStartAttack: Bool = false
+    
     // For Arrow Indicator
-    var triangleNode: SKShapeNode!
-    var triangleBlurNode : SKEffectNode!
+    var triangleNode, circleNode: SKShapeNode!
+    var triangleBlurNode, circleBlurNode : SKEffectNode!
     var eCurDir: eDirection = eDirection.eDOWN // default pointing downward
     
     // Timing for alternating sprite textures
@@ -23,6 +34,8 @@ class CharacterBase : GameObjectBase {
     // In Second Unit
     var textureChangeInterval: TimeInterval = 0.2 // 200 ms default
     var currentTextureIndex: Int = 0
+    
+    var lastAttackTextureStartTime: TimeInterval = 0
     
     // Contact - trigger didBegin, didEnd callback
     // Collision - block the movement
@@ -36,8 +49,22 @@ class CharacterBase : GameObjectBase {
         spriteNode = SKSpriteNode(texture: moveTexture[eDirection.eDOWN.rawValue][0])
         spriteNode.size = CGSize(width: objectSize, height: objectSize)
         
+        spriteNode.userData =
+            [
+             "harm" : false,
+             "isAttacking" : false,
+             "invincible" : false
+            ]
+        
         // Always on top
         spriteNode.zPosition = 99
+        
+        spriteBeHarmOverlayNode = SKSpriteNode(texture: spriteNode.texture)
+        spriteBeHarmOverlayNode.color = UIColor.red
+        spriteBeHarmOverlayNode.colorBlendFactor = 1.0
+        spriteBeHarmOverlayNode.alpha = 0.0 // Adjust opacity, default invisible
+        spriteBeHarmOverlayNode.zPosition = spriteNode.zPosition + 1
+        spriteNode.addChild(spriteBeHarmOverlayNode)
         
         // Add the physics body for the hero
         spriteNode.physicsBody = SKPhysicsBody(rectangleOf: spriteNode.size)
@@ -56,21 +83,158 @@ class CharacterBase : GameObjectBase {
         triangleNode.fillShader = gradientShader
         triangleNode.position = CGPoint(x:0, y:0)
         triangleNode.isHidden = true // initial is hidden
-        triangleNode.zPosition = 99
         
         triangleBlurNode = SKEffectNode()
         triangleBlurNode.addChild(triangleNode)
         triangleBlurNode.filter = CIFilter(name: "CIGaussianBlur", parameters: ["inputRadius": 10])
         triangleBlurNode.shouldRasterize = true  // Improves performance
+        triangleBlurNode.zPosition = 99
+        
+        circleNode = SKShapeNode(circleOfRadius: 25)
+        circleNode.fillColor = .lightGray
+        circleNode.strokeColor = .clear
+        circleNode.lineWidth = 2
+        circleNode.position = CGPoint(x:0, y:0)
+        circleNode.isHidden = true
+        
+        circleBlurNode = SKEffectNode()
+        circleBlurNode.addChild(circleNode)
+        circleBlurNode.filter = CIFilter(name: "CIGaussianBlur", parameters: ["inputRadius": 10])
+        circleBlurNode.shouldRasterize = true  // Improves performance
+        circleBlurNode.zPosition = 99
     }
     
+    func setupAttackSpriteNode(attackSpritePredix : String)
+    {
+        // sequence follow the eDir enum
+        attackTexture = [
+            loadSpriteSheet(imageName: attackSpritePredix + "_right_hit"),
+            loadSpriteSheet(imageName: attackSpritePredix + "_left_hit"),
+            loadSpriteSheet(imageName: attackSpritePredix + "_up_hit"),
+            loadSpriteSheet(imageName: attackSpritePredix + "_down_hit"),
+        ]
+        
+        for i in 0..<attackSpriteNode.count{
+                
+            let extendedSize = spriteNode.size.width * (Constant.DEFAULT_INTERACT_SIZE_EXTEND_RATIO - 1)
+            let width = (i == eDirection.eLEFT.rawValue || i == eDirection.eRIGHT.rawValue) ?         extendedSize : spriteNode.size.width
+            let height = (i == eDirection.eUP.rawValue || i == eDirection.eDOWN.rawValue) ?         extendedSize : spriteNode.size.height
+            
+            // Create Node
+            attackSpriteNode[i] = SKSpriteNode(color: .clear, size: CGSize(width: width, height: height))
+            
+            // would be update when character move after
+            attackSpriteNode[i]?.position = CGPoint(x: 0, y: 0)
+            
+            // one above the body sprite node to cover the original sprite when activate
+            attackSpriteNode[i]?.zPosition = spriteNode.zPosition + 1
+            
+            // not hidden
+            attackSpriteNode[i]?.isHidden = false
+            
+            // Add Physics
+            attackSpriteNode[i]?.physicsBody = SKPhysicsBody(rectangleOf: attackSpriteNode[i]!.size)
+            attackSpriteNode[i]?.physicsBody?.isDynamic = true
+            attackSpriteNode[i]?.physicsBody?.affectedByGravity = false
+            attackSpriteNode[i]?.physicsBody?.allowsRotation = false
+            attackSpriteNode[i]?.physicsBody?.categoryBitMask = PhysicsCategory.playerAttack
+            attackSpriteNode[i]?.physicsBody?.contactTestBitMask = spriteNode.physicsBody!.contactTestBitMask          // contact is the same as the body sprite configure
+            attackSpriteNode[i]?.physicsBody?.collisionBitMask = 0 // should be no block for attack region
+        }
+    }
     
+    override func implementAddNodeToScene(_ addChild: (SKNode) -> Void) {
+        
+        addChild(spriteNode)
+        addChild(triangleBlurNode)
+        addChild(circleBlurNode)
+        
+        if (!attackSpriteNode.isEmpty)
+        {
+            attackSpriteNode.forEach{ node in
+                
+                if node != nil{
+                    addChild(node!)
+                }
+            }
+        }
+    }
+    
+    func displayOnOffAttackBox(_ isDisplay : Bool)
+    {
+        attackSpriteNode.forEach { node in
+            if node != nil{
+                node?.color = isDisplay ? .red : .clear
+            }
+        }
+    }
+    
+    func handleAttackSprite()
+    {
+        // means start attack
+        if (isStartAttack &&
+            !isDragging &&
+            lastAttackTextureStartTime == 0)
+        {
+            isStartAttack = false
+            //print("Start Attack")
+            changeToAttackSprite()
+            lastAttackTextureStartTime = CACurrentMediaTime()
+        }
+        else if (lastAttackTextureStartTime != 0)
+        {
+            let currentTime = CACurrentMediaTime()
+            let timeDelta = currentTime - lastAttackTextureStartTime
+            if (timeDelta > 0.05 || isDragging) // 200 ms
+            {
+                //print("Resume back to normal")
+                resumeSpriteFromAttack()
+            }
+        }
+    }
+    
+    private func changeToAttackSprite()
+    {
+        spriteNode.userData!["isAttacking"] = true
+        beforeAttackPos = spriteNode.position
+        beforeAttackSize = spriteNode.size
+        
+        var offset = CGPoint(x: 0, y: 0)
+        switch eCurDir {
+            case .eRIGHT:
+                offset = CGPoint(x: (attackSpriteNode[eCurDir.rawValue]!.size.width / 2), y: 0)
+            case .eLEFT:
+                offset = CGPoint(x: -1 * (attackSpriteNode[eCurDir.rawValue]!.size.width / 2), y: 0)
+            case .eUP:
+                offset = CGPoint(x: 0, y: (attackSpriteNode[eCurDir.rawValue]!.size.height / 2))
+            case .eDOWN:
+                offset = CGPoint(x: 0, y: -1 * (attackSpriteNode[eCurDir.rawValue]!.size.height / 2))
+        }
+        
+        spriteNode.position.x += offset.x
+        spriteNode.position.y += offset.y
+        
+        spriteNode.size.width += abs(offset.x) * 2
+        spriteNode.size.height += abs(offset.y) * 2
+        
+        spriteNode.texture = attackTexture[eCurDir.rawValue]
+    }
+    
+    func resumeSpriteFromAttack()
+    {
+        spriteNode.position = beforeAttackPos
+        spriteNode.size = beforeAttackSize
+        updateSpriteNodeTexture(eDir : eCurDir, index : 0)
+        lastAttackTextureStartTime = 0
+        spriteNode.userData!["isAttacking"] = false
+    }
     
     private func updateSpriteNodeTexture(eDir: eDirection, index : Int)
     {
         if moveTexture.indices.contains(eDir.rawValue) &&
             moveTexture[eDir.rawValue].indices.contains(index)
         {
+            //print("Update Sprite Texture")
             spriteNode.texture = moveTexture[eDir.rawValue][index]
         }
     }
@@ -120,6 +284,35 @@ class CharacterBase : GameObjectBase {
             
             // Update the last update time for texture change
             lastTextureUpdateTime = currentTime
+        }
+    }
+    
+    func updateSpritePosition(_ newPos : CGPoint)
+    {
+        spriteNode.position = newPos
+        
+        attackSpriteNode.enumerated().forEach{ (index, node) in
+            
+            if node != nil
+            {
+                var offset = CGPoint(x: 0, y: 0)
+                switch index
+                {
+                    case eDirection.eUP.rawValue:
+                        offset = CGPoint(x: 0, y: (spriteNode.size.height + node!.size.height) / 2)
+                    case eDirection.eDOWN.rawValue:
+                        offset = CGPoint(x: 0, y: -1 * (spriteNode.size.height + node!.size.height) / 2)
+                    case eDirection.eLEFT.rawValue:
+                        offset = CGPoint(x: -1 * (spriteNode.size.width + node!.size.width) / 2, y: 0)
+                    case eDirection.eRIGHT.rawValue:
+                        offset = CGPoint(x: (spriteNode.size.width + node!.size.width) / 2, y: 0)
+                    default:
+                        break
+                }
+                
+                node!.position.x = spriteNode.position.x + offset.x
+                node!.position.y = spriteNode.position.y + offset.y
+            }
         }
     }
 }

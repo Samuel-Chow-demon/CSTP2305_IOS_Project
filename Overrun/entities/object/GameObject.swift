@@ -23,15 +23,26 @@ class GameObject : GameObjectBase{
         
         spriteTexture = texture
         spriteNode = SKSpriteNode(texture: spriteTexture)
-        spriteNode.name = needBody ? Constant.SPRITE_NODE_COLLIDABLE : Constant.SPRITE_NODE_COLLIDABLE
+        spriteNode.name = needBody ? Constant.SPRITE_NODE_COLLIDABLE : Constant.SPRITE_NODE_NON_COLLIDABLE
         spriteNode.userData = NSMutableDictionary()
-        spriteNode.userData!["id"] = "\(objType.rawValue)_\(worldCoord.x)_\(worldCoord.y)"
+        spriteNode.userData =
+            ["id"   : "\(objType.rawValue)_\(worldCoord.x)_\(worldCoord.y)",
+             "harm" : false,
+             "invincible" : false
+            ]
         
         spriteNode.size = CGSize(width: objectSize, height: objectSize)
         
         spriteNode.position = .zero // default not apply to screen
         spriteNode.isHidden = true  // default not render
         spriteNode.zPosition = zPosition
+        
+        spriteBeHarmOverlayNode = SKSpriteNode(texture: spriteNode.texture)
+        spriteBeHarmOverlayNode.color = UIColor.white
+        spriteBeHarmOverlayNode.colorBlendFactor = 1.0
+        spriteBeHarmOverlayNode.alpha = 0.0 // Adjust opacity, default invisible
+        spriteBeHarmOverlayNode.zPosition = spriteNode.zPosition + 1
+        spriteNode.addChild(spriteBeHarmOverlayNode)
         
         if (needBody)
         {
@@ -58,6 +69,11 @@ class GameObject : GameObjectBase{
              objectSize : objectSize, worldRowCol : worldRowCol,
              needBody: needBody, zPosition : zPosition,
              contactBitMask : contactBitMask, collisionBitMask : collisionBitMask)
+    }
+    
+    override func implementAddNodeToScene(_ addChild: (SKNode) -> Void) {
+        
+        addChild(spriteNode)
     }
     
 }

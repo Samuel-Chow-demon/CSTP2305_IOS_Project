@@ -15,12 +15,14 @@ struct Constant{
     static let DEFAULT_LIVES = 3
     static let DEFAULT_HERO_SPEED = 10
     
+    static let DEFAULT_INTERACT_SIZE_EXTEND_RATIO = CGFloat(1.4375)
+    
     static let BACKGROUND_BOTTOM_OFFSET = CGFloat(15) // points
     
     static let DRAG_ARROW_HEIGHT = CGFloat(150)
     static let DRAG_ARROW_WIDTH = CGFloat(30)
     
-    static let CHARACTER_MOVE_COLLIDER_BUFFER = CGFloat(3)
+    static let CHARACTER_MOVE_COLLIDER_BUFFER = CGFloat(5)
     static let SPRITE_NODE_COLLIDABLE = "collidable"
     static let SPRITE_NODE_NON_COLLIDABLE = "nonCollidable"
     
@@ -30,10 +32,11 @@ struct Constant{
 struct PhysicsCategory
 {
     static let none = 0
-    static let player: UInt32   = 0x1   << 0      // Player category， 0000 0001
-    static let rock:   UInt32   = 0x1   << 1      // Rock category， 0000 0010
-    static let grass:  UInt32   = 0x1   << 2      // Grass category, 0000 0100
-    static let tree:   UInt32   = 0x1   << 3      // Tree category
+    static let player:          UInt32   = 0x1   << 0       // Player category，     0000 0001
+    static let playerAttack:    UInt32   = 0x1   << 1       // Player attack,        0000 0010
+    static let nonAttackable:   UInt32   = 0x1   << 2       // Non Attackable category， 0000 0100
+    static let attackable:      UInt32   = 0x1   << 3       // Attackable category， 0000 0100
+
 }
 
 enum eGameObjType : Int{
@@ -49,12 +52,10 @@ enum eGameObjType : Int{
     func getPhysicsCAT() -> UInt32{
         switch self
         {
-        case .eGRASS:
-            return PhysicsCategory.grass
-        case .eROCK, .eROCK_1:
-            return PhysicsCategory.rock
-        case .eTREE, .eTREE_BACKGROUND:
-            return PhysicsCategory.tree
+        case .eGRASS, .eROCK, .eTREE, .eTREE_BACKGROUND:
+            return PhysicsCategory.nonAttackable
+        case .eROCK_1:
+            return PhysicsCategory.attackable
         default:
             return PhysicsCategory.player
         }
