@@ -22,6 +22,7 @@ class CharacterBase : GameObjectBase {
     var attackSpriteNode : [SKSpriteNode?] = [SKSpriteNode?](repeating: nil, count: 4)
     var beforeAttackPos : CGPoint = CGPoint(x: 0, y: 0)
     var beforeAttackSize : CGSize = CGSize(width: 0, height: 0)
+    var curAttackDirIdx : Int = 0
     var isStartAttack: Bool = false
     
     // For Arrow Indicator
@@ -51,20 +52,21 @@ class CharacterBase : GameObjectBase {
         
         spriteNode.userData =
             [
-             "harm" : false,
-             "isAttacking" : false,
-             "invincible" : false
+                Constant.USER_FLAG_GET_HARM     : false,
+                Constant.USER_FLAG_IS_INVINCIBLE : false
             ]
         
         // Always on top
+        spriteNode.color = .red             // prepare the be harm color
+        spriteNode.colorBlendFactor = 0.0   // default not to display
+        spriteNode.alpha = 1.0
         spriteNode.zPosition = 99
         
-        spriteBeHarmOverlayNode = SKSpriteNode(texture: spriteNode.texture)
-        spriteBeHarmOverlayNode.color = UIColor.red
-        spriteBeHarmOverlayNode.colorBlendFactor = 1.0
-        spriteBeHarmOverlayNode.alpha = 0.0 // Adjust opacity, default invisible
-        spriteBeHarmOverlayNode.zPosition = spriteNode.zPosition + 1
-        spriteNode.addChild(spriteBeHarmOverlayNode)
+        // get Harm response
+        getHarm.color = .red
+        getHarm.invincibleCycle = 3
+        getHarm.cycleInterval = 0.03
+        // use default 50ms per interval
         
         // Add the physics body for the hero
         spriteNode.physicsBody = SKPhysicsBody(rectangleOf: spriteNode.size)
@@ -72,7 +74,7 @@ class CharacterBase : GameObjectBase {
         spriteNode.physicsBody?.affectedByGravity = false  //disable vertical gravity
         spriteNode.physicsBody?.allowsRotation = false
         spriteNode.physicsBody?.categoryBitMask = PhysicsCategory.player
-        spriteNode.physicsBody?.contactTestBitMask = contactBitMask
+        spriteNode.physicsBody?.contactTestBitMask = contactBitMask | PhysicsCategory.harmful
         spriteNode.physicsBody?.collisionBitMask = collisionBitMask
         
         // Init the Drag Movement Indicator
@@ -123,7 +125,12 @@ class CharacterBase : GameObjectBase {
             // Create Node
             attackSpriteNode[i] = SKSpriteNode(color: .clear, size: CGSize(width: width, height: height))
             
-            // would be update when character move after
+            attackSpriteNode[i]?.userData =
+            [
+                Constant.USER_FLAG_IS_ATTACKING : false,
+            ]
+            
+            // would auto move related to the spriteNode when move
             attackSpriteNode[i]?.position = CGPoint(x: 0, y: 0)
             
             // one above the body sprite node to cover the original sprite when activate
@@ -140,6 +147,8 @@ class CharacterBase : GameObjectBase {
             attackSpriteNode[i]?.physicsBody?.categoryBitMask = PhysicsCategory.playerAttack
             attackSpriteNode[i]?.physicsBody?.contactTestBitMask = spriteNode.physicsBody!.contactTestBitMask          // contact is the same as the body sprite configure
             attackSpriteNode[i]?.physicsBody?.collisionBitMask = 0 // should be no block for attack region
+            
+//            print("attack SpriteNode :\(attackSpriteNode[i]?.physicsBody?.contactTestBitMask)")
         }
     }
     
@@ -164,7 +173,7 @@ class CharacterBase : GameObjectBase {
     {
         attackSpriteNode.forEach { node in
             if node != nil{
-                node?.color = isDisplay ? .red : .clear
+                node?.color = isDisplay ? .blue : .clear
             }
         }
     }
@@ -195,7 +204,8 @@ class CharacterBase : GameObjectBase {
     
     private func changeToAttackSprite()
     {
-        spriteNode.userData!["isAttacking"] = true
+        attackSpriteNode[eCurDir.rawValue]!.userData![Constant.USER_FLAG_IS_ATTACKING] = true
+        curAttackDirIdx = eCurDir.rawValue
         beforeAttackPos = spriteNode.position
         beforeAttackSize = spriteNode.size
         
@@ -226,7 +236,7 @@ class CharacterBase : GameObjectBase {
         spriteNode.size = beforeAttackSize
         updateSpriteNodeTexture(eDir : eCurDir, index : 0)
         lastAttackTextureStartTime = 0
-        spriteNode.userData!["isAttacking"] = false
+        attackSpriteNode[curAttackDirIdx]!.userData![Constant.USER_FLAG_IS_ATTACKING] = false
     }
     
     private func updateSpriteNodeTexture(eDir: eDirection, index : Int)
@@ -314,5 +324,29 @@ class CharacterBase : GameObjectBase {
                 node!.position.y = spriteNode.position.y + offset.y
             }
         }
+    }
+    
+    func Move(delta: CGPoint)
+    {
+        let newPos = CGPoint(x: spriteNode.position.x + delta.x, y: spriteNode.position.y + delta.y)
+        updateSpritePosition(newPos)
+    }
+    
+    func RepelMove()
+    {
+        var delta : CGPoint = .zero
+        
+        switch eCurDir {
+            case .eRIGHT:
+                delta.x = -1 * Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE
+            case .eLEFT:
+                delta.x = Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE
+            case .eUP:
+                delta.y = -1 * Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE
+            case .eDOWN:
+                delta.x = Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE
+        }
+        
+        Move(delta: delta)
     }
 }
