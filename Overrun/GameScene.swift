@@ -11,7 +11,7 @@ import SwiftUI
 import SwiftUICore
 import _SpriteKit_SwiftUI
 
-class GameScene: SKScene {
+class GameScene: SKScene, SKPhysicsContactDelegate {
     
     // get the singleton object
     let gameViewModel = GameViewModel.obj
@@ -22,6 +22,9 @@ class GameScene: SKScene {
     
     // Game Init
     override func didMove(to view: SKView) {
+        
+        // Setup package
+        physicsWorld.contactDelegate = self
         
         // Setup Scene Size
         self.size = getScreenSize()
@@ -35,7 +38,7 @@ class GameScene: SKScene {
         
         // Load Map And Config Screen
         let arrayMap = LoadMap(from: "map1_grass")
-        print(arrayMap!)
+//        print(arrayMap!)
         
         print(view.bounds.size)
         print(self.size.width, self.size.height)
@@ -63,8 +66,7 @@ class GameScene: SKScene {
         if (hero == nil)
         {
             let heroContactBitMask = PhysicsCategory.attackable
-            let heroCollideBitMask = PhysicsCategory.attackable |
-                                     PhysicsCategory.nonAttackable
+            let heroCollideBitMask = PhysicsCategory.collidable
             
             hero = HeroCharacter(spriteName: "tokage",
                                  objectSize: GAME_OBJ_SIZE,
@@ -83,10 +85,7 @@ class GameScene: SKScene {
         hero!.displayOnOffAttackBox(false)
         
         hero!.addNodeToScene(self.addChild)
-//        self.addChild(hero!.spriteNode)
-//        // for arrow move indicator
-//        self.addChild(hero!.triangleBlurNode)
-//        self.addChild(hero!.circleBlurNode)
+
         print("hero position : \(hero!.spriteNode.position.x), \(hero!.spriteNode.position.y)")
         
         
@@ -112,9 +111,13 @@ class GameScene: SKScene {
                     let gmObject = GameObject(spriteName: objType.spriteName, objType: objType,
                                                 objectSize: GAME_OBJ_SIZE,
                                                 worldRowCol: CGPoint(x: colIdx, y: (worldRows - rowIdx - 1)),
+                                                colliderSizeRatio: objType.colliderRatio(),
                                                 needBody: objType.needPhysicsBody(),
                                                 contactBitMask: PhysicsCategory.player,
                                                 collisionBitMask: PhysicsCategory.player)
+                    
+                    gmObject.displayOnOffNodeBox(false)
+                    
                     gameViewModel.gameObjectList.append(gmObject)
                 }
             }
@@ -122,6 +125,7 @@ class GameScene: SKScene {
         
         // Add All Object to screen as child
         gameViewModel.gameObjectList.forEach {
+            
             $0.addNodeToScene(self.addChild)
             //self.addChild($0.spriteNode)
         }
@@ -166,7 +170,9 @@ class GameScene: SKScene {
                 
                 //print("node Block, \(node.frame)")
                 
-                if node.physicsBody == nil { return }
+                if node.physicsBody == nil {
+                    return
+                }
 
                 // Manually check if the future position intersects with any other physics body
                 let nodeRect = node.frame
@@ -191,8 +197,9 @@ class GameScene: SKScene {
                 return
             }
             
-            self.gameScreenViewPort.updateScreenWorldPoint(delta : CGPoint(x: deltaX, y: deltaY))
-            hero!.updatePos(self.gameScreenViewPort)
+            // would update the gameScreenViewPort
+            hero!.Move(viewport: self.gameScreenViewPort,
+                       delta : CGPoint(x: deltaX, y: deltaY))
             
             print("hero position, \(hero!.spriteNode.position.x), \(hero!.spriteNode.position.y)")
             
@@ -248,21 +255,21 @@ class GameScene: SKScene {
             let needDraw = isSpriteNodeWithinScreen(screen: self.gameScreenViewPort,
                                                     gameObj: gameObj)
             
-            if (needDraw)
-            {
-                let screenWorldX = self.gameScreenViewPort.screenWorldPoint.x
-                let screenWorldY = self.gameScreenViewPort.screenWorldPoint.y
-                let objWorldX = gameObj.worldCoordPoint.x
-                let objWorldY = gameObj.worldCoordPoint.y
-                gameObj.spriteNode.position = CGPoint(x:objWorldX - screenWorldX, y:objWorldY - screenWorldY)
-                
-                gameObj.handleGetHarmOverlay()
-            }
-            
-            gameObj.spriteNode.isHidden = !needDraw
+            gameObj.checkIfNeedRenderHandle(self.gameScreenViewPort, needDraw)
         }
         
         gameViewModel.hero!.handleAttackSprite()
+        
+        gameViewModel.colliderManager.checkAndHandleCollides()
+        
+        if (gameViewModel.hero!.handleGetHarmResponse() == true)
+        {
+            gameViewModel.hero!.RepelMove(viewport: self.gameScreenViewPort)
+//            gameViewModel.hero!.Move(viewport: self.gameScreenViewPort,
+//                                     delta : CGPoint(x: 0, y: -1 * Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE))
+        }
+        
+        gameViewModel.colliderManager.checkAndRemoveRegistry()
     }
     
     // Game Collision
@@ -272,42 +279,26 @@ class GameScene: SKScene {
         let bodyA = contact.bodyA
         let bodyB = contact.bodyB
         
-        switch (bodyB.categoryBitMask)
+        if let spriteNodeA = bodyA.node as? SKSpriteNode,
+           let spriteNodeB = bodyB.node as? SKSpriteNode
         {
-        case PhysicsCategory.attackable:
-            if (bodyA.categoryBitMask == PhysicsCategory.player)
-            {
-                if let nodeB = bodyB.node as? SKSpriteNode, let nodeA = bodyA.node as? SKSpriteNode
-                {
-                    if let isAttacking = nodeA.userData?["isAttacking"] as? Bool, isAttacking
-                    {
-                        nodeB.userData!["harm"] = true
-                    }
-                }
-            }
-            break
-        default:
-            break
+            gameViewModel.colliderManager.registerCollision(spriteNodeA, spriteNodeB)
         }
+    }
+    
+    // Some time the engine would optimize the escape contact by only destruct the
+    // first pair of contact when separate, thus we need to manual call
+    // gameViewModel.colliderManager.checkAndRemoveRegistry() to unregister the pair
+    func didEnd(_ contact: SKPhysicsContact) {
+        // Get the two bodies involved in the contact
+        let bodyA = contact.bodyA
+        let bodyB = contact.bodyB
         
-        switch (bodyA.categoryBitMask)
+        if let spriteNodeA = bodyA.node as? SKSpriteNode,
+           let spriteNodeB = bodyB.node as? SKSpriteNode
         {
-        case PhysicsCategory.attackable:
-            if (bodyB.categoryBitMask == PhysicsCategory.player)
-            {
-                if let nodeB = bodyB.node as? SKSpriteNode, let nodeA = bodyA.node as? SKSpriteNode
-                {
-                    if let isAttacking = nodeB.userData?["isAttacking"] as? Bool, isAttacking
-                    {
-                        nodeA.userData!["harm"] = true
-                    }
-                }
-            }
-            break
-        default:
-            break
+            gameViewModel.colliderManager.unRegisterCollision(spriteNodeA, spriteNodeB)
         }
-        
     }
 }
 

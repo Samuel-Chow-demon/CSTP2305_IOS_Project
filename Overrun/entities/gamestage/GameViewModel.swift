@@ -16,10 +16,13 @@ class GameViewModel {
     var hero : HeroCharacter? = nil
     
     // Controller
-    var controller = DragController()
+    let controller = DragController()
     
     // Game Object Node
     var gameObjectList : [GameObject]
+    
+    // Store Active Contacts
+    let colliderManager = ColliderManager()
     
     // prevent external init
     private init() {

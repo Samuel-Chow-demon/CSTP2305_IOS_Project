@@ -35,4 +35,28 @@ class HeroCharacter : CharacterBase{
         updateSpritePosition(CGPoint(x: centerOfScreen.x - currentView.screenWorldPoint.x,
                                      y: centerOfScreen.y - currentView.screenWorldPoint.y))
     }
+    
+    func Move(viewport : GameScreenViewPort, delta: CGPoint)
+    {
+        viewport.updateScreenWorldPoint(delta : delta)
+        updatePos(viewport)
+    }
+    
+    func RepelMove(viewport : GameScreenViewPort)
+    {
+        var delta : CGPoint = .zero
+        
+        switch eCurDir {
+            case .eRIGHT:
+                delta.x = -1 * Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE
+            case .eLEFT:
+                delta.x = Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE
+            case .eUP:
+                delta.y = -1 * Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE
+            case .eDOWN:
+                delta.x = Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE
+        }
+        
+        Move(viewport : viewport, delta: delta)
+    }
 }

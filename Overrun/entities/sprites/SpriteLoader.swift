@@ -36,6 +36,38 @@ func loadSpriteSheet(imageName: String, sheetCols : Int, sheetRows : Int)-> [[SK
     return spriteSheetTextures
 }
 
+func loadSpriteSheet1D(imageName: String, sheetCols : Int, sheetRows : Int)-> [SKTexture]{
+    let spriteSheetImage = SKTexture(imageNamed: imageName)
+    
+    let sheetWidth = spriteSheetImage.size().width
+    let sheetHeight = spriteSheetImage.size().height
+    
+    let frameWidth = sheetWidth / CGFloat(sheetCols)
+    let frameHeight = sheetHeight / CGFloat(sheetRows)
+    
+    var spriteSheetTextures : [SKTexture] = []
+    
+    let isVertical = sheetRows > sheetCols ? true : false
+    let size = isVertical ? sheetRows : sheetCols
+        
+    for idx in 0..<size{
+        
+        let x = isVertical ? 0 : idx
+        let y = isVertical ? idx : 0
+        
+        // CGRect is Bottom to top, left to right, it used 0.0 to 1.0 normalized value
+        let rect = CGRect(x : CGFloat(x) * frameWidth / sheetWidth,
+                          y : CGFloat(y) * frameHeight / sheetHeight,
+                          width: frameWidth / sheetWidth,
+                          height: frameHeight / sheetHeight)
+        
+        spriteSheetTextures.append(SKTexture(rect: rect, in: spriteSheetImage))
+        
+    }
+
+    return spriteSheetTextures
+}
+
 func loadSpriteSheet(imageName: String)->SKTexture{
     return SKTexture(imageNamed: imageName)
 }
