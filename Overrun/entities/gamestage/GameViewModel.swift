@@ -15,6 +15,10 @@ class GameViewModel {
     // Hero Sprite Node
     var hero : HeroCharacter? = nil
     
+    // Enemies List
+    var enemies : [EnemyCharacter] = []
+    var enemyFactory : GameEnemyFactory? = nil
+    
     // Controller
     let controller = DragController()
     

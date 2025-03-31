@@ -26,8 +26,11 @@ class CharacterBase : GameObjectBase {
     var isStartAttack: Bool = false
     
     // For Arrow Indicator
-    var triangleNode, circleNode: SKShapeNode!
-    var triangleBlurNode, circleBlurNode : SKEffectNode!
+    var triangleNode : SKShapeNode? = nil
+    var circleNode: SKShapeNode? = nil
+    var triangleBlurNode : SKEffectNode? = nil
+    var circleBlurNode : SKEffectNode? = nil
+    
     var eCurDir: eDirection = eDirection.eDOWN // default pointing downward
     
     // Timing for alternating sprite textures
@@ -40,70 +43,63 @@ class CharacterBase : GameObjectBase {
     
     // Contact - trigger didBegin, didEnd callback
     // Collision - block the movement
-    init(_ spriteName: String, _ objectSize: CGFloat,
+    init(_ eObjectType : eGameObjType,
+         _ health : Int, _ speed : CGFloat,
+         _ objectSize: CGFloat,
          _ worldCoord: CGPoint,
          _ contactBitMask : UInt32, _ collisionBitMask : UInt32)
     {
-        super.init(eGameObjType.eCHARACTER, worldCoord)
+        super.init(eObjectType, worldCoord, speed, health)
         
-        moveTexture = loadSpriteSheet(imageName: spriteName, sheetCols: 2, sheetRows: 4)
+        moveTexture = loadSpriteSheet(imageName: eObjectType.spriteName, sheetCols: 2, sheetRows: 4)
+        
+        if (!eObjectType.isPlayer())
+        {
+            dieTexture = loadSpriteSheet1D(imageName: "enemy_die_sprite", sheetCols: 1, sheetRows: 9)
+        }
+        
         spriteNode = SKSpriteNode(texture: moveTexture[eDirection.eDOWN.rawValue][0])
         spriteNode.size = CGSize(width: objectSize, height: objectSize)
         
+        spriteNode.name = eObjectType.isPlayer() ? Constant.SPRITE_NODE_NAME_PLAYER : Constant.SPRITE_NODE_NAME_ENEMY
+        
         spriteNode.userData =
             [
+                Constant.USER_FLAG_ID           : "\(eObjectType.rawValue)_\(UUID())",
                 Constant.USER_FLAG_GET_HARM     : false,
                 Constant.USER_FLAG_IS_INVINCIBLE : false
             ]
         
         // Always on top
-        spriteNode.color = .red             // prepare the be harm color
+        spriteNode.color = eObjectType == eGameObjType.eCHARACTER_1 ? .magenta : .cyan             // prepare the be harm color
         spriteNode.colorBlendFactor = 0.0   // default not to display
         spriteNode.alpha = 1.0
         spriteNode.zPosition = 99
         
         // get Harm response
-        getHarm.color = .red
-        getHarm.invincibleCycle = 3
+        getHarm.color = eObjectType.isPlayer() ? .red : .gray
+        getHarm.invincibleCycle = eObjectType.isPlayer() ? 3 : 3
         getHarm.cycleInterval = 0.03
         // use default 50ms per interval
         
         // Add the physics body for the hero
+        
+        // Player is PhysicsCategory.player
+        // Enemy is PhysicsCategory.harmful | PhysicsCategory.attackable
+        let characterCAT = eObjectType.getPhysicsCAT()
+        
+        // if is player, able be attacked by harmful object
+        // if is other character, able be attacked by playerattack collider
+        let contactHarmfulMask = eObjectType.isPlayer() ? PhysicsCategory.harmful : PhysicsCategory.playerAttack
+        
         spriteNode.physicsBody = SKPhysicsBody(rectangleOf: spriteNode.size)
         spriteNode.physicsBody?.isDynamic = true
         spriteNode.physicsBody?.affectedByGravity = false  //disable vertical gravity
         spriteNode.physicsBody?.allowsRotation = false
-        spriteNode.physicsBody?.categoryBitMask = PhysicsCategory.player
-        spriteNode.physicsBody?.contactTestBitMask = contactBitMask | PhysicsCategory.harmful
+        spriteNode.physicsBody?.categoryBitMask = characterCAT
+        spriteNode.physicsBody?.contactTestBitMask = contactBitMask | contactHarmfulMask
         spriteNode.physicsBody?.collisionBitMask = collisionBitMask
         
-        // Init the Drag Movement Indicator
-        triangleNode = SKShapeNode(path: DragArrowPath(in: CGRect(), angle: 0.0).cgPath) // hero.triangleShape.path(in: self.frame).cgPath)
-        triangleNode.lineWidth = 2
-        triangleNode.fillColor = .lightGray
-        triangleNode.strokeColor = .clear
-        triangleNode.fillShader = gradientShader
-        triangleNode.position = CGPoint(x:0, y:0)
-        triangleNode.isHidden = true // initial is hidden
-        
-        triangleBlurNode = SKEffectNode()
-        triangleBlurNode.addChild(triangleNode)
-        triangleBlurNode.filter = CIFilter(name: "CIGaussianBlur", parameters: ["inputRadius": 10])
-        triangleBlurNode.shouldRasterize = true  // Improves performance
-        triangleBlurNode.zPosition = 99
-        
-        circleNode = SKShapeNode(circleOfRadius: 25)
-        circleNode.fillColor = .lightGray
-        circleNode.strokeColor = .clear
-        circleNode.lineWidth = 2
-        circleNode.position = CGPoint(x:0, y:0)
-        circleNode.isHidden = true
-        
-        circleBlurNode = SKEffectNode()
-        circleBlurNode.addChild(circleNode)
-        circleBlurNode.filter = CIFilter(name: "CIGaussianBlur", parameters: ["inputRadius": 10])
-        circleBlurNode.shouldRasterize = true  // Improves performance
-        circleBlurNode.zPosition = 99
     }
     
     func setupAttackSpriteNode(attackSpritePredix : String)
@@ -130,6 +126,8 @@ class CharacterBase : GameObjectBase {
                 Constant.USER_FLAG_IS_ATTACKING : false,
             ]
             
+            attackSpriteNode[i]?.name = Constant.SPRITE_NODE_NAME_PLAYER_ATTACK
+            
             // would auto move related to the spriteNode when move
             attackSpriteNode[i]?.position = CGPoint(x: 0, y: 0)
             
@@ -155,8 +153,15 @@ class CharacterBase : GameObjectBase {
     override func implementAddNodeToScene(_ addChild: (SKNode) -> Void) {
         
         addChild(spriteNode)
-        addChild(triangleBlurNode)
-        addChild(circleBlurNode)
+        
+        if (triangleBlurNode != nil)
+        {
+            addChild(triangleBlurNode!)
+        }
+        if (circleBlurNode != nil)
+        {
+            addChild(circleBlurNode!)
+        }
         
         if (!attackSpriteNode.isEmpty)
         {
@@ -256,8 +261,11 @@ class CharacterBase : GameObjectBase {
         let timeDelta = currentTime - lastTextureUpdateTime
         let angleInDeg = angle * 180 / CGFloat.pi
         
-        //print("timeDelta : \(timeDelta), Interval : \(textureChangeInterval)")
-        print("angleInDeg : \(angleInDeg)")
+        if (eObjectType.isPlayer())
+        {
+            //print("timeDelta : \(timeDelta), Interval : \(textureChangeInterval)")
+            print("angleInDeg : \(angleInDeg)")
+        }
         
         // Determine the direction based on the angle of movement
         if angleInDeg >= -45 && angleInDeg < 45
@@ -281,7 +289,10 @@ class CharacterBase : GameObjectBase {
             eCurDir = eDirection.eDOWN
         }
         
-        print("current Direction : \(eCurDir)")
+        if (eObjectType.isPlayer())
+        {
+            print("current Direction : \(eCurDir)")
+        }
         
         // Update texture every certain period for alternating textures
         if timeDelta >= textureChangeInterval
@@ -326,13 +337,17 @@ class CharacterBase : GameObjectBase {
         }
     }
     
-    func Move(delta: CGPoint)
+    func Move(viewport : GameScreenViewPort, delta: CGPoint)
     {
-        let newPos = CGPoint(x: spriteNode.position.x + delta.x, y: spriteNode.position.y + delta.y)
-        updateSpritePosition(newPos)
+        let newPos = CGPoint(x: worldCoordPoint.x + delta.x, y: worldCoordPoint.y + delta.y)
+        worldCoordPoint = newPos
+        
+        // reference to the screen bottom left corner
+        updateSpritePosition(CGPoint(x: worldCoordPoint.x - viewport.screenWorldPoint.x,
+                                     y: worldCoordPoint.y - viewport.screenWorldPoint.y))
     }
     
-    func RepelMove()
+    func RepelMove(viewport : GameScreenViewPort)
     {
         var delta : CGPoint = .zero
         
@@ -347,6 +362,6 @@ class CharacterBase : GameObjectBase {
                 delta.x = Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE
         }
         
-        Move(delta: delta)
+        Move(viewport : viewport, delta: delta)
     }
 }

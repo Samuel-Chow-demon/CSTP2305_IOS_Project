@@ -12,9 +12,13 @@ struct Constant{
     static let SCREEN_TILE_COL = 7
     static let SCREEN_TILE_ROW = 15
     
-    static let DEFAULT_LIVES = 3
-    static let DEFAULT_HERO_SPEED = 10
+    static let DEFAULT_HERO_HEALTH = 3
+    static let DEFAULT_HERO_SPEED = CGFloat(10)
     static let DEFAULT_HERO_HARM_REPEL_DISTANCE = CGFloat(50)
+    
+    static let DEFAULT_ENEMY_HEALTH = 1
+    static let DEFAULT_ENEMY_SPEED = CGFloat(10)
+    static let DEFAULT_ENEMY_HARM_REPEL_DISTANCE = CGFloat(50)
     
     static let DEFAULT_INTERACT_SIZE_EXTEND_RATIO = CGFloat(1.4375)
     
@@ -24,6 +28,9 @@ struct Constant{
     static let DRAG_ARROW_WIDTH = CGFloat(30)
     
     static let CHARACTER_MOVE_COLLIDER_BUFFER = CGFloat(5)
+    static let SPRITE_NODE_NAME_PLAYER = "player"
+    static let SPRITE_NODE_NAME_PLAYER_ATTACK = "playerAttack"
+    static let SPRITE_NODE_NAME_ENEMY = "enemy"
     static let SPRITE_NODE_COLLIDABLE = "collidable"
     static let SPRITE_NODE_NON_COLLIDABLE = "nonCollidable"
     
@@ -61,8 +68,8 @@ enum eGameObjType : Int{
     
     case eCACTUS = 6
     
-    case eENEMY = 98
-    case eCHARACTER = 99
+    case eENEMY_1 = 98
+    case eCHARACTER_1 = 99
     
     func getPhysicsCAT() -> UInt32{
         switch self
@@ -73,20 +80,42 @@ enum eGameObjType : Int{
             return PhysicsCategory.nonAttackable
         case .eROCK_1:
             return PhysicsCategory.attackable
-        case .eROCK_TOXIC, .eCACTUS, .eENEMY:
+        case .eROCK_TOXIC, .eCACTUS, .eENEMY_1:
             return PhysicsCategory.attackable | PhysicsCategory.harmful
+        case .eCHARACTER_1:
+            return PhysicsCategory.player
         default:
             return 0
+        }
+    }
+    
+    func isPlayer()->Bool{
+        switch self
+        {
+            case .eCHARACTER_1:
+                return true
+            default:
+                return false
+        }
+    }
+    
+    func isDeadNeedRemove()->Bool{
+        switch self
+        {
+        case .eENEMY_1:
+            return true
+        default:
+            return false
         }
     }
     
     func needPhysicsBody()->Bool{
         switch self
         {
-        case .eCHARACTER, .eTREE,
+        case .eCHARACTER_1, .eTREE,
               .eROCK, .eROCK_1, .eROCK_TOXIC, .eROCK_2,
               .eCACTUS,
-              .eENEMY:
+              .eENEMY_1:
             return true
         default:
             return false
@@ -131,7 +160,8 @@ enum eGameObjType : Int{
         case .eROCK_TOXIC: return "rock3_toxic"
         case .eTREE, .eTREE_BACKGROUND: return "tree_1"
         case .eCACTUS: return "cactus_1"
-        case .eENEMY: return "enemy"
+        case .eENEMY_1: return "parrot"
+        case .eCHARACTER_1: return "tokage"
         default: return ""
         }
     }
@@ -139,14 +169,14 @@ enum eGameObjType : Int{
     var description: String{
         switch self
         {
-        case .eCHARACTER: return "character"
+        case .eCHARACTER_1: return "character1"
         case .eGRASS: return "grass"
         case .eROCK, .eROCK_1, .eROCK_2, .eROCK_TOXIC: return "rock"
         case .eTREE: return "tree"
         case .eTREE_BACKGROUND: return "tree_background"
         case .eSAND: return "sand"
         case .eCACTUS: return "cactus"
-        case .eENEMY: return "enemy"
+        case .eENEMY_1: return "enemy 1"
         }
     }
 }
