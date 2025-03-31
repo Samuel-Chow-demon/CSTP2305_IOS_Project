@@ -17,8 +17,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     let gameViewModel = GameViewModel.obj
     let gameScreenViewPort = GameScreenViewPort.obj
     
-    // Drag Controller
-    var dragControl : DragController!
+    let childNodeAccessLock = NSLock()
     
     // Game Init
     override func didMove(to view: SKView) {
@@ -34,7 +33,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // init Object
         let GAME_OBJ_SIZE = getObjectSize()
         gameViewModel.gameObjectList.removeAll()
-        dragControl = gameViewModel.controller
+        let dragControl = gameViewModel.controller
         
         // Load Map And Config Screen
         let arrayMap = LoadMap(from: "map1_grass")
@@ -68,7 +67,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             let heroContactBitMask = PhysicsCategory.attackable
             let heroCollideBitMask = PhysicsCategory.collidable
             
-            hero = HeroCharacter(spriteName: "tokage",
+            hero = HeroCharacter(eObjectType : eGameObjType.eCHARACTER_1,
                                  objectSize: GAME_OBJ_SIZE,
                                  // Always at the center of the screen
                                  worldCoord: CGPoint(x: gameScreenViewPort.worldWidthHeight.width / 2,      y:gameScreenViewPort.worldWidthHeight.height / 2),
@@ -130,10 +129,21 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             //self.addChild($0.spriteNode)
         }
         
+        // ------------------------------------------------------------ Enemy Factory
+        let maxNumOfEnemy : UInt8 = 30
+        
+        gameViewModel.enemyFactory = GameEnemyFactory(objectSize: GAME_OBJ_SIZE,
+                                    maxNumOfEnemy : maxNumOfEnemy,
+                                    spawnIntervalSecList : [1, 2, 4, 8],
+                                    screenViewPort : gameScreenViewPort)
+        
+        
+        
+        
         // ------------------------------------------------------------ Define Drag Control
         dragControl.onDragBegan = { startCGPoint in
             hero!.dragStartPosition = startCGPoint
-            hero!.circleNode.isHidden = true
+            hero!.circleNode!.isHidden = true
             print("Drag Start : \(startCGPoint)")
         }
         dragControl.onDragChanged = { angle, dy, dx in
@@ -145,14 +155,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             }
             
             // Calculate the delta based on the angle and default speed
-            let deltaX = cos(angle) * CGFloat(Constant.DEFAULT_HERO_SPEED)
-            let deltaY = sin(angle) * CGFloat(Constant.DEFAULT_HERO_SPEED)
+            let deltaX = cos(angle) * hero!.objectSpeed
+            let deltaY = sin(angle) * hero!.objectSpeed
             
             hero!.isDragging = true
             
             hero!.updateTextureForDirection(angle)
-            hero!.triangleNode.path = DragArrowPath(in: self.frame, angle: angle).cgPath
-            hero!.triangleNode.position = hero!.dragStartPosition ?? CGPoint(x:0,y:0)
+            hero!.triangleNode!.path = DragArrowPath(in: self.frame, angle: angle).cgPath
+            hero!.triangleNode!.position = hero!.dragStartPosition ?? CGPoint(x:0,y:0)
             
             print("Delta X : \(deltaX), Delta Y : \(deltaY)")
             print("Dragging, angle : \(angle), dy : \(dy), dx : \(dx), direction : \(hero!.eCurDir)")
@@ -164,48 +174,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                                          y: hero!.spriteNode.position.y + deltaY)
             
             // Check for potential collisions
-            var willCollide = false
-            
-            self.enumerateChildNodes(withName: Constant.SPRITE_NODE_COLLIDABLE) { node, _ in
-                
-                //print("node Block, \(node.frame)")
-                
-                if node.physicsBody == nil {
-                    return
-                }
-
-                // Manually check if the future position intersects with any other physics body
-                let nodeRect = node.frame
-                
-                // CGRect start from bottom-left corner
-                let futureRect = CGRect(x: futurePosition.x - hero!.spriteNode.size.width / 2 +                                 Constant.CHARACTER_MOVE_COLLIDER_BUFFER,
-                                        y: futurePosition.y - hero!.spriteNode.size.height / 2 +
-                                            Constant.CHARACTER_MOVE_COLLIDER_BUFFER,
-                                        width: hero!.spriteNode.size.width -                                Constant.CHARACTER_MOVE_COLLIDER_BUFFER,
-                                        height: hero!.spriteNode.size.height -
-                                            Constant.CHARACTER_MOVE_COLLIDER_BUFFER)
-                
-                if (isCollided(futureRect, nodeRect))
-                {
-                    print("collided")
-                    willCollide = true
-                }
-            }
-            
-            if (willCollide)
+            if (self.beforeMoveCheckIsBlocked(futurePosition : futurePosition,
+                                              objectSize: hero!.spriteNode.size,
+                                              colliderBuffer: Constant.CHARACTER_MOVE_COLLIDER_BUFFER))
             {
                 return
             }
             
             // would update the gameScreenViewPort
-            hero!.Move(viewport: self.gameScreenViewPort,
+            hero!.HeroMove(viewport: self.gameScreenViewPort,
                        delta : CGPoint(x: deltaX, y: deltaY))
             
             print("hero position, \(hero!.spriteNode.position.x), \(hero!.spriteNode.position.y)")
             
-//            let moveAction = SKAction.move(to: CGPoint(x: hero!.spriteNode.position.x + deltaX,
-//                                                       y: hero!.spriteNode.position.y + deltaY), duration: 0.016)
-//            hero!.spriteNode.run(moveAction)
         }
         dragControl.onDragEnded = {
             hero!.dragStartPosition = nil
@@ -220,6 +201,61 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     
     }
     
+    func beforeMoveCheckIsBlocked(futurePosition : CGPoint,
+                                  objectSize : CGSize,
+                                  colliderBuffer : CGFloat) -> Bool
+    {
+        var willCollide = false
+            
+        self.childNodeAccessLock.lock()
+        
+        self.enumerateChildNodes(withName: Constant.SPRITE_NODE_COLLIDABLE) { node, _ in
+ 
+            //print("node Block, \(node.frame)")
+            
+            if (node.physicsBody == nil)
+            {
+                return
+            }
+            
+            if node.frame.isNull || node.frame.isInfinite {
+                print("Invalid node frame detected: \(node)")
+                return
+            }
+            
+            // Manually check if the future position intersects with any other physics body
+            let nodeRect = node.frame
+            
+            // CGRect start from bottom-left corner
+            let futureRect = CGRect(x: futurePosition.x - objectSize.width / 2 +                                 colliderBuffer,
+                                    y: futurePosition.y - objectSize.height / 2 +
+                                    colliderBuffer,
+                                    width: objectSize.width -                                colliderBuffer,
+                                    height: objectSize.height -
+                                    colliderBuffer)
+            
+            if (isCollided(futureRect, nodeRect))
+            {
+                //print("collided")
+                willCollide = true
+            }
+        }
+        self.childNodeAccessLock.unlock()
+        
+        return willCollide
+    }
+    
+    func checkAndRemoveEnemyNode(enemy: EnemyCharacter)
+    {
+        if (enemy.spriteNode.isHidden)
+        {
+            self.childNodeAccessLock.lock()
+            enemy.spriteNode.removeFromParent()
+            
+            self.childNodeAccessLock.unlock()
+        }
+    }
+    
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         // Called when the user touches the screen (touch began)
         if let touch = touches.first {
@@ -229,8 +265,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             //print("Touch began at \(currentCGPoint)")
             
             gameViewModel.hero!.isStartAttack = true
-            gameViewModel.hero!.circleNode.position = currentCGPoint
-            gameViewModel.hero!.circleNode.isHidden = false
+            gameViewModel.hero!.circleNode?.position = currentCGPoint
+            gameViewModel.hero!.circleNode?.isHidden = false
         }
     }
 
@@ -240,14 +276,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             //let location = touch.location(in: self.view)
             //print("Touch ended at \(location)")
             
-            gameViewModel.hero!.circleNode.isHidden = true
+            gameViewModel.hero!.circleNode?.isHidden = true
         }
     }
     
     // Game Loop Updates
-    override func update(_ currentTime: TimeInterval) {
-        
-        gameViewModel.hero!.triangleNode.isHidden = !(gameViewModel.hero!.isDragging) || gameViewModel.hero!.dragStartPosition == nil
+    override func update(_ currentTime: TimeInterval)
+    {
+        gameViewModel.hero!.triangleNode?.isHidden = !(gameViewModel.hero!.isDragging) || gameViewModel.hero!.dragStartPosition == nil
         
         // Update the render screen when move
         gameViewModel.gameObjectList.forEach{ gameObj in
@@ -260,13 +296,32 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         gameViewModel.hero!.handleAttackSprite()
         
+        // Here for enemy handle
+        gameViewModel.enemyFactory?.checkAndSpawnEnemy(enemies: &gameViewModel.enemies, eObjectType: eGameObjType.eENEMY_1, addChild: self.addChild, accessNodeLock : childNodeAccessLock)
+        
+        gameViewModel.enemies.forEach{ enemy in
+            
+            if (!enemy.isDie())
+            {
+                enemy.MoveTowardsHero(viewport : self.gameScreenViewPort,
+                                      heroPos : gameViewModel.hero!.worldCoordPoint)                
+            }
+            
+            if (enemy.handleGetHarmResponse() == true)
+            {
+                enemy.RepelMove(viewport: self.gameScreenViewPort)
+            }
+            
+            // if after kill, remove from the scene
+            self.checkAndRemoveEnemyNode(enemy : enemy)
+        }
+        
         gameViewModel.colliderManager.checkAndHandleCollides()
         
         if (gameViewModel.hero!.handleGetHarmResponse() == true)
         {
-            gameViewModel.hero!.RepelMove(viewport: self.gameScreenViewPort)
-//            gameViewModel.hero!.Move(viewport: self.gameScreenViewPort,
-//                                     delta : CGPoint(x: 0, y: -1 * Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE))
+            gameViewModel.hero!.HeroRepelMove(viewport: self.gameScreenViewPort,
+                                              beforeMoveCheckIsBlock: beforeMoveCheckIsBlocked)
         }
         
         gameViewModel.colliderManager.checkAndRemoveRegistry()

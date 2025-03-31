@@ -22,6 +22,8 @@ class GameObjectBase : GameObjectProtocal{
     }
     
     var eObjectType : eGameObjType
+    var objectHealth : Int = 1              // default 1 health
+    var objectSpeed : CGFloat = 0           // default 0
     var worldCoordPoint : CGPoint = .zero
     
     var spriteNode: SKSpriteNode!
@@ -30,15 +32,29 @@ class GameObjectBase : GameObjectProtocal{
     var spriteDisplayPhysicsBodyNode: SKShapeNode?
     
     var spriteTexture : SKTexture!
+    var dieTexture : [SKTexture] = []
     var physicsBody: SKPhysicsBody!
     
     var getHarm : getHarmConfig = .init()
     
     init(_ eObjType : eGameObjType,
-         _ worldCoord: CGPoint)
+         _ worldCoord: CGPoint,
+         _ speed : CGFloat = 0,
+         _ health : Int = 1)
     {
         eObjectType = eObjType
         worldCoordPoint = worldCoord
+        objectHealth = health
+        objectSpeed = speed
+    }
+    
+    func isDie()->Bool
+    {
+        return objectHealth <= 0
+    }
+    func HealthDecrease(_ damage: Int)
+    {
+        objectHealth -= damage
     }
     
     func addNodeToScene(_ addChild: (SKNode)-> Void)
@@ -64,10 +80,57 @@ class GameObjectBase : GameObjectProtocal{
     }
     
     // create recursive function
+    private func startDieEffect(cycle: Int)
+    {
+        guard cycle > 0 else {
+            
+            if (isDie() && eObjectType.isDeadNeedRemove())
+            {
+                self.spriteNode.isHidden = true
+            }
+            
+            return // quit if cycle finish
+        }
+        
+        guard cycle <= dieTexture.count, dieTexture.count > 0 else {
+            
+            if (isDie() && eObjectType.isDeadNeedRemove())
+            {
+                self.spriteNode.isHidden = true
+            }
+            return
+        }
+        
+        // Schedule a task in background thread in low priority with 50 ms after
+        DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + self.getHarm.cycleInterval) {
+            
+            // Need switch back to main thread when control UI attribute to prevent wrong behaviour
+            DispatchQueue.main.async{
+                self.spriteNode.texture = self.dieTexture[self.dieTexture.count - cycle]
+            }
+            
+            self.startDieEffect(cycle: cycle - 1)
+        }
+    }
+    
+    // create recursive function
     private func startHarmEffect(cycle: Int)
     {
         guard cycle > 0 else {
             self.spriteNode.userData![Constant.USER_FLAG_IS_INVINCIBLE] = false
+            
+            if (isDie() && eObjectType.isDeadNeedRemove())
+            {
+                if (self.dieTexture.count > 0)
+                {
+                    startDieEffect(cycle : self.dieTexture.count)
+                }
+                else
+                {
+                    self.spriteNode.isHidden = true
+                }
+            }
+            
             return // quit if cycle finish
         }
         // Schedule a task in background thread in low priority with 50 ms after
@@ -81,6 +144,19 @@ class GameObjectBase : GameObjectProtocal{
             if (cycle - 1 <= 0)
             {
                 self.spriteNode.userData![Constant.USER_FLAG_IS_INVINCIBLE] = false
+                
+                if (self.isDie() && self.eObjectType.isDeadNeedRemove())
+                {
+                    if (self.dieTexture.count > 0)
+                    {
+                        self.startDieEffect(cycle : self.dieTexture.count)
+                    }
+                    else
+                    {
+                        self.spriteNode.isHidden = true
+                    }
+                }
+                
                 return
             }
             
@@ -109,6 +185,9 @@ class GameObjectBase : GameObjectProtocal{
                 spriteNode.color = getHarm.color
                 spriteNode.colorBlendFactor = 1.0
                 spriteNode.alpha = 0.8
+                
+                // deduct health
+                HealthDecrease(1)
  
                 startHarmEffect(cycle: getHarm.invincibleCycle)
                 return true
