@@ -2,319 +2,108 @@
 //  GameScene.swift
 //  Overrun
 //
-//  Created by Samuel Chow on 2025-03-10.
+//  Created by travis Schellenberg on 2025-03-31.
 //
 
 import SpriteKit
 import GameplayKit
-import SwiftUI
-import SwiftUICore
-import _SpriteKit_SwiftUI
 
-class GameScene: SKScene, SKPhysicsContactDelegate {
+class GameScene: SKScene {
     
-    // get the singleton object
-    let gameViewModel = GameViewModel.obj
-    let gameScreenViewPort = GameScreenViewPort.obj
+    var entities = [GKEntity]()
+    var graphs = [String : GKGraph]()
     
-    // Drag Controller
-    var dragControl : DragController!
+    private var lastUpdateTime : TimeInterval = 0
+    private var label : SKLabelNode?
+    private var spinnyNode : SKShapeNode?
     
-    // Game Init
-    override func didMove(to view: SKView) {
-        
-        // Setup package
-        physicsWorld.contactDelegate = self
-        
-        // Setup Scene Size
-        self.size = getScreenSize()
-        self.backgroundColor = .lightGray
-        // use default (0, 0) anchor reference point, bottom left as start
-        
-        // init Object
-        let GAME_OBJ_SIZE = getObjectSize()
-        gameViewModel.gameObjectList.removeAll()
-        dragControl = gameViewModel.controller
-        
-        // Load Map And Config Screen
-        let arrayMap = LoadMap(from: "map1_grass")
-//        print(arrayMap!)
-        
-        print(view.bounds.size)
-        print(self.size.width, self.size.height)
-        
-        let worldRows = arrayMap!.count
-        let worldCols = arrayMap![0].count
-        let worldHeight = CGFloat(worldRows) * GAME_OBJ_SIZE
-        let worldWidth = CGFloat(worldCols) * GAME_OBJ_SIZE
-        
-        print("world Rows(\(worldRows)), Cols(\(worldCols)), Height(\(worldHeight)), Width(\(worldWidth))")
-        
-        gameScreenViewPort.currentWorldColRowSize = CGSize(width: CGFloat(worldCols), height:
-                                                    CGFloat(worldRows))
-        gameScreenViewPort.worldWidthHeight = CGSize(width: worldWidth, height: worldHeight)
-        gameScreenViewPort.screenWorldPoint = CGPoint(x: (worldWidth - self.size.width) / 2,
-                                                      y: (worldHeight - self.size.height) / 2)
-        
-        
-        print("Screen World Point(\(gameScreenViewPort.screenWorldPoint.x),              \(gameScreenViewPort.screenWorldPoint.y))")
-        
-        print("Game Obj Size : \(GAME_OBJ_SIZE)")
-        
-        // ------------------------------------------------------------ Create hero sprite node
-        var hero = gameViewModel.hero
-        if (hero == nil)
-        {
-            let heroContactBitMask = PhysicsCategory.attackable
-            let heroCollideBitMask = PhysicsCategory.collidable
-            
-            hero = HeroCharacter(spriteName: "tokage",
-                                 objectSize: GAME_OBJ_SIZE,
-                                 // Always at the center of the screen
-                                 worldCoord: CGPoint(x: gameScreenViewPort.worldWidthHeight.width / 2,      y:gameScreenViewPort.worldWidthHeight.height / 2),
-                                 contactBitMask: heroContactBitMask,
-                                 collisionBitMask: heroCollideBitMask)
-            
-            // Pointing the gameViewModel.hero to the same created object
-            gameViewModel.hero = hero
-        }
-        
-        // Init hero position at the center of the current screen referenced world point
-        hero!.updatePos(gameScreenViewPort)
-        
-        hero!.displayOnOffAttackBox(false)
-        
-        hero!.addNodeToScene(self.addChild)
+    override func sceneDidLoad() {
 
-        print("hero position : \(hero!.spriteNode.position.x), \(hero!.spriteNode.position.y)")
+        self.lastUpdateTime = 0
         
-        
-        // ------------------------------------------------------------ Create Grass sprite node (Background)
-        let backgroundObjectType = eGameObjType.eGRASS
-        
-        let grassTexture = loadSpriteSheet(imageName: "grass_tile")
-
-        arrayMap?.enumerated().forEach { (rowIdx, row) in
-            row.enumerated().forEach { (colIdx, col) in
-                
-                let gmObjectBackground = GameObject(texture: grassTexture, objType:                 backgroundObjectType,
-                                          objectSize: GAME_OBJ_SIZE,
-                                          worldRowCol: CGPoint(x: colIdx, y: (worldRows - rowIdx - 1)),
-                                          needBody: eGameObjType.eGRASS.needPhysicsBody(),
-                                          zPosition : -1) // always at the bottom
-                gameViewModel.gameObjectList.append(gmObjectBackground)
-                
-                // if map design at the spot is not the background type, create the object with the same
-                // row col
-                if col != backgroundObjectType.rawValue{
-                    let objType = eGameObjType(rawValue: col) ?? backgroundObjectType
-                    let gmObject = GameObject(spriteName: objType.spriteName, objType: objType,
-                                                objectSize: GAME_OBJ_SIZE,
-                                                worldRowCol: CGPoint(x: colIdx, y: (worldRows - rowIdx - 1)),
-                                                colliderSizeRatio: objType.colliderRatio(),
-                                                needBody: objType.needPhysicsBody(),
-                                                contactBitMask: PhysicsCategory.player,
-                                                collisionBitMask: PhysicsCategory.player)
-                    
-                    gmObject.displayOnOffNodeBox(false)
-                    
-                    gameViewModel.gameObjectList.append(gmObject)
-                }
-            }
+        // Get label node from scene and store it for use later
+        self.label = self.childNode(withName: "//helloLabel") as? SKLabelNode
+        if let label = self.label {
+            label.alpha = 0.0
+            label.run(SKAction.fadeIn(withDuration: 2.0))
         }
         
-        // Add All Object to screen as child
-        gameViewModel.gameObjectList.forEach {
-            
-            $0.addNodeToScene(self.addChild)
-            //self.addChild($0.spriteNode)
-        }
+        // Create shape node to use during mouse interaction
+        let w = (self.size.width + self.size.height) * 0.05
+        self.spinnyNode = SKShapeNode.init(rectOf: CGSize.init(width: w, height: w), cornerRadius: w * 0.3)
         
-        // ------------------------------------------------------------ Define Drag Control
-        dragControl.onDragBegan = { startCGPoint in
-            hero!.dragStartPosition = startCGPoint
-            hero!.circleNode.isHidden = true
-            print("Drag Start : \(startCGPoint)")
+        if let spinnyNode = self.spinnyNode {
+            spinnyNode.lineWidth = 2.5
+            
+            spinnyNode.run(SKAction.repeatForever(SKAction.rotate(byAngle: CGFloat(Double.pi), duration: 1)))
+            spinnyNode.run(SKAction.sequence([SKAction.wait(forDuration: 0.5),
+                                              SKAction.fadeOut(withDuration: 0.5),
+                                              SKAction.removeFromParent()]))
         }
-        dragControl.onDragChanged = { angle, dy, dx in
-            
-            // prevent drag began skipped
-            if (hero!.dragStartPosition == nil)
-            {
-                return
-            }
-            
-            // Calculate the delta based on the angle and default speed
-            let deltaX = cos(angle) * CGFloat(Constant.DEFAULT_HERO_SPEED)
-            let deltaY = sin(angle) * CGFloat(Constant.DEFAULT_HERO_SPEED)
-            
-            hero!.isDragging = true
-            
-            hero!.updateTextureForDirection(angle)
-            hero!.triangleNode.path = DragArrowPath(in: self.frame, angle: angle).cgPath
-            hero!.triangleNode.position = hero!.dragStartPosition ?? CGPoint(x:0,y:0)
-            
-            print("Delta X : \(deltaX), Delta Y : \(deltaY)")
-            print("Dragging, angle : \(angle), dy : \(dy), dx : \(dx), direction : \(hero!.eCurDir)")
-            //print("Triangle pos: \(self.hero.triangleNode.position)")
-            
-            // Need to setup a future position physics body to see if any future collision occur
-            // Simulate future position
-            let futurePosition = CGPoint(x: hero!.spriteNode.position.x + deltaX,
-                                         y: hero!.spriteNode.position.y + deltaY)
-            
-            // Check for potential collisions
-            var willCollide = false
-            
-            self.enumerateChildNodes(withName: Constant.SPRITE_NODE_COLLIDABLE) { node, _ in
-                
-                //print("node Block, \(node.frame)")
-                
-                if node.physicsBody == nil {
-                    return
-                }
-
-                // Manually check if the future position intersects with any other physics body
-                let nodeRect = node.frame
-                
-                // CGRect start from bottom-left corner
-                let futureRect = CGRect(x: futurePosition.x - hero!.spriteNode.size.width / 2 +                                 Constant.CHARACTER_MOVE_COLLIDER_BUFFER,
-                                        y: futurePosition.y - hero!.spriteNode.size.height / 2 +
-                                            Constant.CHARACTER_MOVE_COLLIDER_BUFFER,
-                                        width: hero!.spriteNode.size.width -                                Constant.CHARACTER_MOVE_COLLIDER_BUFFER,
-                                        height: hero!.spriteNode.size.height -
-                                            Constant.CHARACTER_MOVE_COLLIDER_BUFFER)
-                
-                if (isCollided(futureRect, nodeRect))
-                {
-                    print("collided")
-                    willCollide = true
-                }
-            }
-            
-            if (willCollide)
-            {
-                return
-            }
-            
-            // would update the gameScreenViewPort
-            hero!.Move(viewport: self.gameScreenViewPort,
-                       delta : CGPoint(x: deltaX, y: deltaY))
-            
-            print("hero position, \(hero!.spriteNode.position.x), \(hero!.spriteNode.position.y)")
-            
-//            let moveAction = SKAction.move(to: CGPoint(x: hero!.spriteNode.position.x + deltaX,
-//                                                       y: hero!.spriteNode.position.y + deltaY), duration: 0.016)
-//            hero!.spriteNode.run(moveAction)
-        }
-        dragControl.onDragEnded = {
-            hero!.dragStartPosition = nil
-            hero!.isDragging = false
-            print("Drag End")
-        }
-        
-        // Add gesture recognizer
-        // For Drag
-        let dragGesture = UIPanGestureRecognizer(target: dragControl, action: #selector(dragControl.HandleDrag(_:)))
-        view.addGestureRecognizer(dragGesture)
+    }
     
+    
+    func touchDown(atPoint pos : CGPoint) {
+        if let n = self.spinnyNode?.copy() as! SKShapeNode? {
+            n.position = pos
+            n.strokeColor = SKColor.green
+            self.addChild(n)
+        }
+    }
+    
+    func touchMoved(toPoint pos : CGPoint) {
+        if let n = self.spinnyNode?.copy() as! SKShapeNode? {
+            n.position = pos
+            n.strokeColor = SKColor.blue
+            self.addChild(n)
+        }
+    }
+    
+    func touchUp(atPoint pos : CGPoint) {
+        if let n = self.spinnyNode?.copy() as! SKShapeNode? {
+            n.position = pos
+            n.strokeColor = SKColor.red
+            self.addChild(n)
+        }
     }
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        // Called when the user touches the screen (touch began)
-        if let touch = touches.first {
-            let location = touch.location(in: self.view)
-            let screenHeight = UIScreen.main.bounds.height
-            let currentCGPoint = CGPoint(x: location.x, y: screenHeight - location.y) // flip back to
-            //print("Touch began at \(currentCGPoint)")
-            
-            gameViewModel.hero!.isStartAttack = true
-            gameViewModel.hero!.circleNode.position = currentCGPoint
-            gameViewModel.hero!.circleNode.isHidden = false
+        if let label = self.label {
+            label.run(SKAction.init(named: "Pulse")!, withKey: "fadeInOut")
         }
+        
+        for t in touches { self.touchDown(atPoint: t.location(in: self)) }
     }
-
+    
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for t in touches { self.touchMoved(toPoint: t.location(in: self)) }
+    }
+    
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        // Called when the user lifts their finger off the screen (touch ended)
-        if let touch = touches.first {
-            //let location = touch.location(in: self.view)
-            //print("Touch ended at \(location)")
-            
-            gameViewModel.hero!.circleNode.isHidden = true
-        }
+        for t in touches { self.touchUp(atPoint: t.location(in: self)) }
     }
     
-    // Game Loop Updates
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for t in touches { self.touchUp(atPoint: t.location(in: self)) }
+    }
+    
+    
     override func update(_ currentTime: TimeInterval) {
+        // Called before each frame is rendered
         
-        gameViewModel.hero!.triangleNode.isHidden = !(gameViewModel.hero!.isDragging) || gameViewModel.hero!.dragStartPosition == nil
-        
-        // Update the render screen when move
-        gameViewModel.gameObjectList.forEach{ gameObj in
-  
-            let needDraw = isSpriteNodeWithinScreen(screen: self.gameScreenViewPort,
-                                                    gameObj: gameObj)
-            
-            gameObj.checkIfNeedRenderHandle(self.gameScreenViewPort, needDraw)
+        // Initialize _lastUpdateTime if it has not already been
+        if (self.lastUpdateTime == 0) {
+            self.lastUpdateTime = currentTime
         }
         
-        gameViewModel.hero!.handleAttackSprite()
+        // Calculate time since last update
+        let dt = currentTime - self.lastUpdateTime
         
-        gameViewModel.colliderManager.checkAndHandleCollides()
-        
-        if (gameViewModel.hero!.handleGetHarmResponse() == true)
-        {
-            gameViewModel.hero!.RepelMove(viewport: self.gameScreenViewPort)
-//            gameViewModel.hero!.Move(viewport: self.gameScreenViewPort,
-//                                     delta : CGPoint(x: 0, y: -1 * Constant.DEFAULT_HERO_HARM_REPEL_DISTANCE))
+        // Update entities
+        for entity in self.entities {
+            entity.update(deltaTime: dt)
         }
         
-        gameViewModel.colliderManager.checkAndRemoveRegistry()
-    }
-    
-    // Game Collision
-    func didBegin(_ contact: SKPhysicsContact)
-    {
-        // Get the two bodies involved in the contact
-        let bodyA = contact.bodyA
-        let bodyB = contact.bodyB
-        
-        if let spriteNodeA = bodyA.node as? SKSpriteNode,
-           let spriteNodeB = bodyB.node as? SKSpriteNode
-        {
-            gameViewModel.colliderManager.registerCollision(spriteNodeA, spriteNodeB)
-        }
-    }
-    
-    // Some time the engine would optimize the escape contact by only destruct the
-    // first pair of contact when separate, thus we need to manual call
-    // gameViewModel.colliderManager.checkAndRemoveRegistry() to unregister the pair
-    func didEnd(_ contact: SKPhysicsContact) {
-        // Get the two bodies involved in the contact
-        let bodyA = contact.bodyA
-        let bodyB = contact.bodyB
-        
-        if let spriteNodeA = bodyA.node as? SKSpriteNode,
-           let spriteNodeB = bodyB.node as? SKSpriteNode
-        {
-            gameViewModel.colliderManager.unRegisterCollision(spriteNodeA, spriteNodeB)
-        }
+        self.lastUpdateTime = currentTime
     }
 }
-
-// Create ContentView for preview purpose
-struct ContentView: View{
-    var scene = GameScene(size: CGSize(width: 402, height: 874)) // Iphone 16 Pro screen size
-    var body: some View{
-        VStack{
-            SpriteView(scene : scene)
-                .ignoresSafeArea()
-                .frame(width:402, height:874)
-        }
-    }
-}
-
-//#Preview("ContentView")
-//{
-//    ContentView()
-//}
