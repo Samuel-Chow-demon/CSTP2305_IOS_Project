@@ -28,6 +28,40 @@ class GameViewModel {
     // Store Active Contacts
     let colliderManager = ColliderManager()
     
+    // Metrics Display
+    var healthDisplay : HealthDisplay? = nil
+    var enemyNumDisplay : EnemyNumDisplay? = nil
+    var popupBox : PopupGameWinLoseBox? = nil
+    
+    func cleanUp() {
+        hero?.spriteNode.removeFromParent()
+        hero = nil
+        
+        for enemy in enemies {
+            enemy.spriteNode.removeFromParent()
+        }
+        enemies.removeAll()
+        
+        enemyFactory = nil
+        
+        colliderManager.clearAll()
+        
+        for obj in gameObjectList {
+            obj.spriteNode.removeFromParent()
+        }
+        gameObjectList.removeAll()
+        
+        // Remove UI elements
+        healthDisplay?.healthDisplayNode.removeFromParent()
+        healthDisplay = nil
+        
+        enemyNumDisplay?.enemyNumDisplayNode.removeFromParent()
+        enemyNumDisplay = nil
+        
+        popupBox?.popupNode.removeFromParent()
+        popupBox = nil
+    }
+    
     // prevent external init
     private init() {
         

@@ -36,6 +36,11 @@ class ColliderManager{
     // to handle node pair register, unregister and checking sequence
     let collisionQueue = DispatchQueue(label : "collisionQueue") // a serial Queue
     
+    func clearAll()
+    {
+        activeCollisions.removeAll()
+    }
+    
     func registerCollision(_ node1: SKSpriteNode, _ node2: SKSpriteNode){
         collisionQueue.async {
             let nodePair = NodePair(nodeA: node1, nodeB : node2)

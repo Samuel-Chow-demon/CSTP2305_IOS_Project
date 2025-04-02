@@ -53,10 +53,7 @@ class CharacterBase : GameObjectBase {
         
         moveTexture = loadSpriteSheet(imageName: eObjectType.spriteName, sheetCols: 2, sheetRows: 4)
         
-        if (!eObjectType.isPlayer())
-        {
-            dieTexture = loadSpriteSheet1D(imageName: "enemy_die_sprite", sheetCols: 1, sheetRows: 9)
-        }
+        dieTexture = loadSpriteSheet1D(imageName: "die_sprite", sheetCols: 1, sheetRows: 9)
         
         spriteNode = SKSpriteNode(texture: moveTexture[eDirection.eDOWN.rawValue][0])
         spriteNode.size = CGSize(width: objectSize, height: objectSize)
