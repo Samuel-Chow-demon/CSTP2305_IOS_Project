@@ -12,6 +12,7 @@ class EnemyCharacter : CharacterBase{
     
     var moveInterval: TimeInterval = 0.050 // 50 ms default
     var lastMoveUpdateTime: TimeInterval = 0
+    var removedFromParent = false
     
     init(eObjectType : eGameObjType,
          speed : CGFloat,

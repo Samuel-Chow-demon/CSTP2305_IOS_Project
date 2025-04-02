@@ -19,6 +19,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     
     let childNodeAccessLock = NSLock()
     
+    var firstUpdateEnemySize = true
+    var isGameStageFinished = false
+    
     // Game Init
     override func didMove(to view: SKView) {
         
@@ -130,18 +133,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         
         // ------------------------------------------------------------ Enemy Factory
-        let maxNumOfEnemy : UInt8 = 30
+        let maxNumOfEnemy : UInt8 = 5
         
         gameViewModel.enemyFactory = GameEnemyFactory(objectSize: GAME_OBJ_SIZE,
-                                    maxNumOfEnemy : maxNumOfEnemy,
-                                    spawnIntervalSecList : [1, 2, 4, 8],
-                                    screenViewPort : gameScreenViewPort)
+                                                    moveInterval : 0.2, // every 200ms to mvoe
+                                                    maxNumOfEnemy : maxNumOfEnemy,
+                                                    spawnIntervalSecList : [1, 2, 4, 8],
+                                                    screenViewPort : gameScreenViewPort)
         
         
         
         
         // ------------------------------------------------------------ Define Drag Control
         dragControl.onDragBegan = { startCGPoint in
+            
+            if (hero!.isDie())
+            {
+                return
+            }
+            
             hero!.dragStartPosition = startCGPoint
             hero!.circleNode!.isHidden = true
             print("Drag Start : \(startCGPoint)")
@@ -149,7 +159,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         dragControl.onDragChanged = { angle, dy, dx in
             
             // prevent drag began skipped
-            if (hero!.dragStartPosition == nil)
+            if (hero!.dragStartPosition == nil ||
+                hero!.isDie())
             {
                 return
             }
@@ -198,7 +209,21 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // For Drag
         let dragGesture = UIPanGestureRecognizer(target: dragControl, action: #selector(dragControl.HandleDrag(_:)))
         view.addGestureRecognizer(dragGesture)
-    
+        
+        // Add Metric Display
+        let metricDisplayScale = 0.7
+        gameViewModel.healthDisplay = HealthDisplay(spriteName: "heart",
+                                                    initHealth : hero!.objectHealth,
+                                                    objectSize: GAME_OBJ_SIZE * metricDisplayScale,
+                                                    fixedCoord : CGPoint(x: 60, y: self.frame.height * 0.9))
+        self.addChild(gameViewModel.healthDisplay!.healthDisplayNode)
+        
+        gameViewModel.enemyNumDisplay = EnemyNumDisplay(initEnemySize: Int(gameViewModel.enemyFactory?.maxNumOfEnemy ?? 0),
+                                                        objectSize: GAME_OBJ_SIZE * metricDisplayScale,
+                                                        fixedCoord: CGPoint(x: self.frame.width * 0.7, y: self.frame.height * 0.9))
+        self.addChild(gameViewModel.enemyNumDisplay!.enemyNumDisplayNode)
+        
+        gameViewModel.popupBox = PopupGameWinLoseBox(self.frame, self.addChild)
     }
     
     func beforeMoveCheckIsBlocked(futurePosition : CGPoint,
@@ -247,10 +272,15 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     
     func checkAndRemoveEnemyNode(enemy: EnemyCharacter)
     {
-        if (enemy.spriteNode.isHidden)
+        if (enemy.spriteNode.isHidden &&
+            !enemy.removedFromParent)
         {
             self.childNodeAccessLock.lock()
+            
+            let spriteTexture = enemy.moveTexture[0][0]
+            gameViewModel.enemyNumDisplay?.updateEnemySize(enemyTexture: spriteTexture, decrement: 1)
             enemy.spriteNode.removeFromParent()
+            enemy.removedFromParent = true
             
             self.childNodeAccessLock.unlock()
         }
@@ -259,14 +289,35 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         // Called when the user touches the screen (touch began)
         if let touch = touches.first {
+            
             let location = touch.location(in: self.view)
             let screenHeight = UIScreen.main.bounds.height
             let currentCGPoint = CGPoint(x: location.x, y: screenHeight - location.y) // flip back to
             //print("Touch began at \(currentCGPoint)")
             
-            gameViewModel.hero!.isStartAttack = true
-            gameViewModel.hero!.circleNode?.position = currentCGPoint
-            gameViewModel.hero!.circleNode?.isHidden = false
+            // Check if finished box selection
+            if (isGameStageFinished)
+            {
+                // detect button click
+                let touchedNodes = nodes(at: currentCGPoint)
+
+                for node in touchedNodes
+                {
+                    if (checkAndNavigate(node: node, at: currentCGPoint))
+                    {
+                        break
+                    }
+                }
+            }
+            else
+            {
+                if (!gameViewModel.hero!.isDie())
+                {
+                    gameViewModel.hero!.isStartAttack = true
+                    gameViewModel.hero!.circleNode?.position = currentCGPoint
+                    gameViewModel.hero!.circleNode?.isHidden = false
+                }
+            }
         }
     }
 
@@ -283,6 +334,29 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // Game Loop Updates
     override func update(_ currentTime: TimeInterval)
     {
+        if (isGameStageFinished)
+        {
+            if (gameViewModel.hero != nil &&
+                !gameViewModel.hero!.isDie())
+            {
+                gameViewModel.hero!.updateTextureForDirection(3 * CGFloat.pi / 2)
+            }
+            return
+        }
+        
+        if (gameViewModel.hero!.isDie() ||
+            // enemy all killed
+            gameViewModel.enemyNumDisplay!.enemySize <= 0)
+        {
+            isGameStageFinished = true
+            
+            // Here trigger popUpBox Display
+            let isHeroDie = gameViewModel.hero!.isDie()
+            gameViewModel.popupBox?.winSloganNode.isHidden = isHeroDie
+            gameViewModel.popupBox?.loseSloganNode.isHidden = !isHeroDie
+            gameViewModel.popupBox?.showPopup(self.frame)
+        }
+        
         gameViewModel.hero!.triangleNode?.isHidden = !(gameViewModel.hero!.isDragging) || gameViewModel.hero!.dragStartPosition == nil
         
         // Update the render screen when move
@@ -299,7 +373,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Here for enemy handle
         gameViewModel.enemyFactory?.checkAndSpawnEnemy(enemies: &gameViewModel.enemies, eObjectType: eGameObjType.eENEMY_1, addChild: self.addChild, accessNodeLock : childNodeAccessLock)
         
+        
+        
         gameViewModel.enemies.forEach{ enemy in
+            
+            if (firstUpdateEnemySize)
+            {
+                firstUpdateEnemySize = false
+                let spriteTexture = enemy.moveTexture[0][0]
+                gameViewModel.enemyNumDisplay?.updateEnemySize(enemyTexture: spriteTexture, decrement: 0)
+            }
             
             if (!enemy.isDie())
             {
@@ -320,6 +403,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         if (gameViewModel.hero!.handleGetHarmResponse() == true)
         {
+            gameViewModel.healthDisplay?.decrementHealth()
             gameViewModel.hero!.HeroRepelMove(viewport: self.gameScreenViewPort,
                                               beforeMoveCheckIsBlock: beforeMoveCheckIsBlocked)
         }
@@ -355,10 +439,93 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             gameViewModel.colliderManager.unRegisterCollision(spriteNodeA, spriteNodeB)
         }
     }
+    
+    func goToGameScene()
+    {
+        // clean up first
+        self.removeAllActions()
+        self.removeAllChildren()
+        gameViewModel.cleanUp()
+        
+        let gameScene = GameScene(size: self.size)
+        gameScene.scaleMode = .resizeFill
+        let transition = SKTransition.fade(withDuration: 0.5)
+        self.view?.presentScene(gameScene, transition: transition)
+    }
+    
+    func goToGameStageScene() {
+        // clean up first
+        self.removeAllActions()
+        self.removeAllChildren()
+        gameViewModel.cleanUp()
+        
+        let gameStageScene = StageScene(size: self.size)
+        gameStageScene.scaleMode = .resizeFill
+        let transition = SKTransition.fade(withDuration: 0.5)
+        self.view?.presentScene(gameStageScene, transition: transition)
+    }
+    
+    func checkAndNavigate(node: SKNode, at location : CGPoint)->Bool
+    {
+        var isNavigated = false
+        
+        //print("location : \(location)")
+        
+        if let parentNode = node.parent{
+            
+            let localUnderParentTouchPosition = parentNode.convert(location, from: self)
+            
+//            print("parent node name: \(parentNode.name)")
+//            print("parent node position: \(parentNode.position)")
+//            print("parent frame origin: \(parentNode.frame.origin)")
+//            print("local touch : \(localUnderParentTouchPosition)")
+//            print("node frame : \(node.frame)")
+//            print("node name : \(node.name ?? "")")
+//            print("node frame Origin: \(node.frame.origin)")
+            
+            if node.frame.contains(localUnderParentTouchPosition)
+            {
+                print("node contains : \(node.name ?? "")")
+                      
+                //let name = node.name
+                switch (node.name)
+                {
+                case "retryButton":
+                    // start again
+                    goToGameScene()
+                    isNavigated = true
+                    break
+                case "quitButton":
+                    goToGameStageScene()
+                    isNavigated = true
+                    break
+                default:
+                    break
+                }
+            }
+        }
+                      
+        //print("\n")
+        
+        if (isNavigated)
+        {
+            return isNavigated
+        }
+        
+        for child in node.children{
+            isNavigated = checkAndNavigate(node: child, at : location)
+            
+            if (isNavigated)
+            {
+                break
+            }
+        }
+        return isNavigated
+    }
 }
 
 // Create ContentView for preview purpose
-struct ContentView: View{
+struct GameContentView: View{
     var scene = GameScene(size: CGSize(width: 402, height: 874)) // Iphone 16 Pro screen size
     var body: some View{
         VStack{
@@ -369,7 +536,7 @@ struct ContentView: View{
     }
 }
 
-//#Preview("ContentView")
+//#Preview("GameContentView")
 //{
-//    ContentView()
+//    GameContentView()
 //}

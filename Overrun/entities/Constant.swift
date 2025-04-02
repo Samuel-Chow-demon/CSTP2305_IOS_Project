@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UIKit
 
 struct Constant{
     
@@ -102,7 +103,7 @@ enum eGameObjType : Int{
     func isDeadNeedRemove()->Bool{
         switch self
         {
-        case .eENEMY_1:
+        case .eENEMY_1, .eCHARACTER_1:
             return true
         default:
             return false
@@ -187,4 +188,13 @@ enum eDirection: Int{
     case eLEFT
     case eUP
     case eDOWN
+}
+
+extension UIColor {
+    convenience init(hex: Int, alpha: CGFloat = 1.0) {
+        let red = CGFloat((hex >> 16) & 0xFF) / 255.0
+        let green = CGFloat((hex >> 8) & 0xFF) / 255.0
+        let blue = CGFloat(hex & 0xFF) / 255.0
+        self.init(red: red, green: green, blue: blue, alpha: alpha)
+    }
 }

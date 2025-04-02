@@ -15,6 +15,7 @@ class GameEnemyFactory
     var screenHeight : CGFloat = 0
     var maxNumOfEnemy : UInt8
     var enemyObjectSize : CGFloat = 0
+    var enemyMoveInterval : TimeInterval = 0.2 // default
     
     var lastSpawnEnemyTimeSec : TimeInterval = 0
     var nextSpawnEnemyInterval : TimeInterval = 0
@@ -23,6 +24,7 @@ class GameEnemyFactory
     let screenViewPort : GameScreenViewPort
     
     init(objectSize: CGFloat,
+         moveInterval : TimeInterval,
          maxNumOfEnemy : UInt8, spawnIntervalSecList : [TimeInterval],
          screenViewPort : GameScreenViewPort)
     {
@@ -34,6 +36,7 @@ class GameEnemyFactory
         
         self.maxNumOfEnemy = maxNumOfEnemy
         self.enemyObjectSize = objectSize
+        self.enemyMoveInterval = moveInterval
         
         self.screenViewPort = screenViewPort
     }
@@ -95,7 +98,7 @@ class GameEnemyFactory
         // no collision block
         let enemy = EnemyCharacter(eObjectType: eObjectType,
                                    speed: Constant.DEFAULT_ENEMY_SPEED,
-                                   moveInterval : 0.2, // every 200 ms to move
+                                   moveInterval : enemyMoveInterval, // 0.2 every 200 ms to move
                                    objectSize: enemyObjectSize,
                                    worldCoord: CGPoint(x: randomX, y: randomY), contactBitMask: PhysicsCategory.playerAttack, collisionBitMask: 0)
         
